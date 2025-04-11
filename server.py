@@ -1,10 +1,12 @@
 import os
+import asyncio
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
 import google.generativeai as genai
 from dotenv import load_dotenv
+import concurrent.futures
 
 # Load environment variables from .env file
 load_dotenv()
@@ -69,7 +71,8 @@ async def restyle_endpoint(request: RestyleRequest):
 
     print(f"Received prompt: {request.prompt}") # Print the prompt upon receiving the request
     # Updated system prompt to include HTML and CSS context
-    system_prompt = f"""You are a world-class, highly creative web designer. Your task is to generate CSS code that overrides the styles of a webpage to satisfy a specific art direction, based *only* on the provided HTML structure.
+    system_prompt = f"""You are a world-class, highly creative web designer. Your task is to generate CSS code that overrides
+    the styles of a webpage to satisfy a specific art direction, based *only* on the provided HTML structure.
     
     Context:
     1.  **Art Direction:** {request.prompt}
@@ -80,17 +83,17 @@ async def restyle_endpoint(request: RestyleRequest):
     
     Instructions:
     - Be highly creative and bold in your CSS design choices.
+    - Over use small animations and transitions to make the page feel alive.
     - In addition to changing colors (background, text, links, accents), also creatively modify:
         • Border styles (width, color, style: solid, dashed, double, etc.)
         • Border radius (rounded corners, pill shapes, etc.)
-        • Box shadows and text shadows
+        • Box shadows and text shadows for glowing effects
         • Add !important to everything to ensure it overrides existing styles.
         • Background images, colors, gradients, transparency, or patterns
         • Text shadows, text decorations (underline, line-through)
         • Font families, font weights, and font styles
         • Spacing (padding, margin, letter-spacing, line-height)
         • Button and input styles (hover, active, focus states)
-        • Animations or transitions (if appropriate)
         • Any other visually impactful CSS properties
         • Hover states, active states, and focus states should be included for interactive elements.
     - Use a variety of CSS features to make the theme visually distinct and interesting.
@@ -99,13 +102,19 @@ async def restyle_endpoint(request: RestyleRequest):
     - Do not include explanations or markdown formatting like ```css. Only return the raw CSS code.
     """
 
+    async def generate_with_timeout():
+        loop = asyncio.get_event_loop()
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            return await loop.run_in_executor(pool, lambda: model.generate_content(system_prompt))
+
     try:
-        # Generate content using the model
-        response = model.generate_content(system_prompt)
+        # Set a timeout (in seconds) for the Gemini API call
+        TIMEOUT_SECONDS = 20
+        response = await asyncio.wait_for(generate_with_timeout(), timeout=TIMEOUT_SECONDS)
 
         # Basic error handling for the response
         if not response.candidates or not response.candidates[0].content.parts:
-             raise HTTPException(status_code=500, detail="Failed to generate style from Gemini API.")
+            raise HTTPException(status_code=500, detail="Failed to generate style from Gemini API.")
 
         generated_style = response.text
 
