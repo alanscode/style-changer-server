@@ -67,6 +67,7 @@ async def restyle_endpoint(request: RestyleRequest):
     if not model:
         raise HTTPException(status_code=500, detail="Generative model not initialized. Check API key and configuration.")
 
+    print(f"Received prompt: {request.prompt}") # Print the prompt upon receiving the request
     # Updated system prompt to include HTML and CSS context
     system_prompt = f"""You are a world-class, highly creative web designer. Your task is to generate CSS code that overrides the styles of a webpage to satisfy a specific art direction, based *only* on the provided HTML structure.
     
@@ -83,6 +84,9 @@ async def restyle_endpoint(request: RestyleRequest):
         • Border styles (width, color, style: solid, dashed, double, etc.)
         • Border radius (rounded corners, pill shapes, etc.)
         • Box shadows and text shadows
+        • Add !important to everything to ensure it overrides existing styles.
+        • Background images, colors, gradients, transparency, or patterns
+        • Text shadows, text decorations (underline, line-through)
         • Font families, font weights, and font styles
         • Spacing (padding, margin, letter-spacing, line-height)
         • Button and input styles (hover, active, focus states)
