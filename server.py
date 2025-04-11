@@ -68,19 +68,32 @@ async def restyle_endpoint(request: RestyleRequest):
         raise HTTPException(status_code=500, detail="Generative model not initialized. Check API key and configuration.")
 
     # Updated system prompt to include HTML and CSS context
-    system_prompt = f"""You are a world-class web creative designer. Your task is to generate CSS code that overrides the styles of a webpage to satisfy a specific art direction, based *only* on the provided HTML structure.
-
-Context:
-1.  **Art Direction:** {request.prompt}
-2.  **Current HTML Structure (simplified):**
-    ```html
-    {request.html_structure}
-    ```
-
-Based *only* on the art direction and the provided HTML structure, generate the necessary CSS override code.
-Ensure the CSS selectors are specific enough to target the intended elements based on the HTML structure.
-Do not include explanations or markdown formatting like ```css. Only return the raw CSS code.
-"""
+    system_prompt = f"""You are a world-class, highly creative web designer. Your task is to generate CSS code that overrides the styles of a webpage to satisfy a specific art direction, based *only* on the provided HTML structure.
+    
+    Context:
+    1.  **Art Direction:** {request.prompt}
+    2.  **Current HTML Structure (simplified):**
+        ```html
+        {request.html_structure}
+        ```
+    
+    Instructions:
+    - Be highly creative and bold in your CSS design choices.
+    - In addition to changing colors (background, text, links, accents), also creatively modify:
+        • Border styles (width, color, style: solid, dashed, double, etc.)
+        • Border radius (rounded corners, pill shapes, etc.)
+        • Box shadows and text shadows
+        • Font families, font weights, and font styles
+        • Spacing (padding, margin, letter-spacing, line-height)
+        • Button and input styles (hover, active, focus states)
+        • Animations or transitions (if appropriate)
+        • Any other visually impactful CSS properties
+        • Hover states, active states, and focus states should be included for interactive elements.
+    - Use a variety of CSS features to make the theme visually distinct and interesting.
+    - Ensure the CSS selectors are specific enough to target the intended elements based on the HTML structure.
+    - Ensure that foreground text and background colors have opposing contrast for readability.
+    - Do not include explanations or markdown formatting like ```css. Only return the raw CSS code.
+    """
 
     try:
         # Generate content using the model
