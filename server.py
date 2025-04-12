@@ -102,15 +102,9 @@ async def restyle_endpoint(request: RestyleRequest):
     - Do not include explanations or markdown formatting like ```css. Only return the raw CSS code.
     """
 
-    async def generate_with_timeout():
-        loop = asyncio.get_event_loop()
-        with concurrent.futures.ThreadPoolExecutor() as pool:
-            return await loop.run_in_executor(pool, lambda: model.generate_content(system_prompt))
-
     try:
-        # Set a timeout (in seconds) for the Gemini API call
-        TIMEOUT_SECONDS = 20
-        response = await asyncio.wait_for(generate_with_timeout(), timeout=TIMEOUT_SECONDS)
+        # Direct Gemini API call without timeout logic
+        response = model.generate_content(system_prompt)
 
         # Basic error handling for the response
         if not response.candidates or not response.candidates[0].content.parts:
