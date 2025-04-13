@@ -270,7 +270,7 @@ async def restyle_endpoint(request: RestyleRequest):
         # Claude API call with increased max_tokens to ensure complete CSS response
         response = client.messages.create(
             model="claude-3-7-sonnet-20250219",
-            max_tokens=4096,  # Increased from 1024 to 4096 to ensure complete CSS
+            max_tokens=8192,  # Increased from 1024 to 4096 to ensure complete CSS
             messages=[
                 {"role": "user", "content": system_prompt}
             ]
