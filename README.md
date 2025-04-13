@@ -14,12 +14,23 @@ This is a FastAPI server that uses Anthropic's Claude API to generate CSS styles
    ```
    uv pip install -r requirements.txt
    ```
-
-3. Create a `.env` file in the root directory with your Anthropic API key:
+3. Create a `.env` file in the root directory with your configuration:
    ```
+   # Anthropic API Key
    ANTHROPIC_API_KEY=your_api_key_here
+   
+   # Logging Configuration
+   ENABLE_HTML_LOGGING=true
+   ENABLE_CSS_LOGGING=true
+   
+   # Server Configuration
+   SERVER_HOST=0.0.0.0
+   SERVER_PORT=8000
    ```
    
+   - You can get an API key from [Anthropic's website](https://console.anthropic.com/).
+   - Set `ENABLE_HTML_LOGGING` and `ENABLE_CSS_LOGGING` to `true` or `false` to control whether HTML and CSS files are saved.
+   - Customize `SERVER_HOST` and `SERVER_PORT` to change the server's listening address and port.
    You can get an API key from [Anthropic's website](https://console.anthropic.com/).
 
 ## Running the Server
@@ -30,7 +41,7 @@ Start the server with:
 python server-claude.py
 ```
 
-The server will run on `http://localhost:8000`.
+The server will run on the host and port specified in your `.env` file (defaults to `http://0.0.0.0:8000`).
 
 ## API Endpoints
 
@@ -49,15 +60,15 @@ Generates CSS styles based on an art direction prompt and HTML structure.
 
 **Response:**
 
+The API returns a simplified response with only the generated CSS:
+
 ```json
 {
-  "received_prompt": "Make it look like a cyberpunk interface",
-  "generated_style": "/* CSS styles here */",
-  "html_saved_to": "requests/20250413_123456_make_it_look_like_a_cyberpunk_i.html",
-  "css_saved_to": "css/20250413_123456_make_it_look_like_a_cyberpunk_i.css",
-  "token_reduction": "10000 tokens (75.0%)"
+  "generated_style": "/* CSS styles here */"
 }
 ```
+
+HTML and CSS files are still saved to disk if logging is enabled in the `.env` file, but they are not included in the API response.
 
 ## HTML Cleaning
 
@@ -86,10 +97,12 @@ This cleaning process can reduce token usage by 50-90% depending on the page, wh
 
 ## File Storage
 
-The server saves files for debugging and reference:
+The server can save files for debugging and reference, controlled by environment variables:
 
-- **Cleaned HTML**: Saved in the `requests` folder with a timestamp and prompt-based filename
-- **Generated CSS**: Saved in the `css` folder with a timestamp and prompt-based filename
+- **Cleaned HTML**: When `ENABLE_HTML_LOGGING=true`, saved in the `requests` folder with a timestamp and prompt-based filename
+- **Generated CSS**: When `ENABLE_CSS_LOGGING=true`, saved in the `css` folder with a timestamp and prompt-based filename
+
+You can disable file storage by setting these variables to `false` in your `.env` file.
 
 ## CSS Generation
 

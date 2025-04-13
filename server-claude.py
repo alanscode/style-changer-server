@@ -151,7 +151,14 @@ def clean_html_for_llm(html_content: str) -> str:
         return html_content  # Return original on error
 
 def save_html_structure(html_structure, prompt):
-    """Save the HTML structure to a file in the requests folder."""
+    """Save the HTML structure to a file in the requests folder if enabled."""
+    # Check if HTML logging is enabled
+    enable_html_logging = os.getenv("ENABLE_HTML_LOGGING", "false").lower() == "true"
+    
+    if not enable_html_logging:
+        print("HTML logging is disabled. Skipping HTML save.")
+        return "HTML logging disabled"
+    
     # Create requests directory if it doesn't exist
     requests_dir = pathlib.Path("requests")
     requests_dir.mkdir(exist_ok=True)
@@ -171,7 +178,14 @@ def save_html_structure(html_structure, prompt):
     return str(file_path)
 
 def save_css(css_content, prompt):
-    """Save the generated CSS to a file in the css folder."""
+    """Save the generated CSS to a file in the css folder if enabled."""
+    # Check if CSS logging is enabled
+    enable_css_logging = os.getenv("ENABLE_CSS_LOGGING", "false").lower() == "true"
+    
+    if not enable_css_logging:
+        print("CSS logging is disabled. Skipping CSS save.")
+        return "CSS logging disabled"
+    
     # Create css directory if it doesn't exist
     css_dir = pathlib.Path("css")
     css_dir.mkdir(exist_ok=True)
@@ -202,11 +216,15 @@ async def restyle_endpoint(request: RestyleRequest):
 
     print(f"Received prompt: {request.prompt}")  # Print the prompt upon receiving the request
     
+    # Check if logging is enabled
+    enable_html_logging = os.getenv("ENABLE_HTML_LOGGING", "false").lower() == "true"
+    enable_css_logging = os.getenv("ENABLE_CSS_LOGGING", "false").lower() == "true"
+    
     # Clean the HTML structure to reduce token count
     cleaned_html = clean_html_for_llm(request.html_structure)
     
-    # Save only the cleaned HTML
-    cleaned_html_path = save_html_structure(cleaned_html, request.prompt)
+    # Save only the cleaned HTML if logging is enabled
+    cleaned_html_path = save_html_structure(cleaned_html, request.prompt) if enable_html_logging else "HTML logging disabled"
     
     # Calculate token reduction (approximate)
     original_tokens = len(request.html_structure) / 4  # Rough estimate
@@ -261,20 +279,16 @@ async def restyle_endpoint(request: RestyleRequest):
         # Extract the generated CSS from the response
         generated_style = response.content[0].text
 
-        # Save the CSS to a file
-        css_file_path = save_css(generated_style, request.prompt)
+        # Save the CSS to a file if logging is enabled
+        css_file_path = save_css(generated_style, request.prompt) if enable_css_logging else "CSS logging disabled"
 
         print(f"Generated CSS length: {len(generated_style)} characters")
         # Print a preview of the CSS (first 500 characters)
         print(f"CSS Preview:\n{generated_style[:500]}...")
 
-        # Return the generated style along with the original request data for context
+        # Return only the generated style as requested
         return {
-            "received_prompt": request.prompt,
-            "generated_style": generated_style,
-            "html_saved_to": cleaned_html_path,
-            "css_saved_to": css_file_path,
-            "token_reduction": f"{token_reduction:.0f} tokens ({token_reduction_percent:.1f}%)"
+            "generated_style": generated_style
         }
 
     except Exception as e:
@@ -337,9 +351,19 @@ if __name__ == "__main__":
         print("\nWARNING: ANTHROPIC_API_KEY is not set or is still the placeholder.")
         print("Please set your actual API key in the .env file for the application to work correctly.\n")
     
-    # Check and kill any processes using port 8000
-    print("Checking for processes using port 8000...")
-    check_and_kill_port(8000)
+    # Log environment settings
+    enable_html_logging = os.getenv("ENABLE_HTML_LOGGING", "false").lower() == "true"
+    enable_css_logging = os.getenv("ENABLE_CSS_LOGGING", "false").lower() == "true"
+    print(f"HTML Logging: {'Enabled' if enable_html_logging else 'Disabled'}")
+    print(f"CSS Logging: {'Enabled' if enable_css_logging else 'Disabled'}")
+    
+    # Get server host and port from environment variables or use defaults
+    server_host = os.getenv("SERVER_HOST", "0.0.0.0")
+    server_port = int(os.getenv("SERVER_PORT", "8000"))
+    
+    # Check and kill any processes using the specified port
+    print(f"Checking for processes using port {server_port}...")
+    check_and_kill_port(server_port)
 
-    print("Starting server...")
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    print(f"Starting server on {server_host}:{server_port}...")
+    uvicorn.run(app, host=server_host, port=server_port)
