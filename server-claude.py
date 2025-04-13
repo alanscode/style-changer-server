@@ -115,11 +115,6 @@ def clean_html_for_llm(html_content: str) -> str:
             'itemprop', 'itemscope', 'itemtype', 'trackingParams', 
             'nonce', 'jslog', 'ved', 'ftl-eligible',
             'notify-on-loaded', 'notify-on-unloaded',
-            # Accessibility attributes (careful with these)
-            'role', 'aria-label', 'aria-labelledby', 'aria-hidden',
-            'aria-expanded', 'aria-haspopup', 'aria-controls',
-            'aria-checked', 'aria-selected', 'aria-current',
-            'aria-disabled', 'aria-describedby'
         ]
         
         # 6. Handle data-* attributes and sanitized attributes separately
