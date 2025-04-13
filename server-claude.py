@@ -2,6 +2,8 @@ import os
 import asyncio
 import subprocess
 import sys
+import datetime
+import pathlib
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -9,6 +11,8 @@ import uvicorn
 from anthropic import Anthropic
 from dotenv import load_dotenv
 import concurrent.futures
+from bs4 import BeautifulSoup, Comment  # Added for HTML cleaning
+import re  # For regex pattern matching
 
 # Load environment variables from .env file
 load_dotenv()
@@ -55,6 +59,137 @@ app.add_middleware(
 )
 # --- End CORS Configuration ---
 
+def clean_html_for_llm(html_content: str) -> str:
+    """
+    Removes elements and attributes from HTML that are unlikely to be relevant
+    for high-level CSS styling generation, reducing token count.
+    """
+    if not html_content:
+        return ""
+
+    try:
+        soup = BeautifulSoup(html_content, 'lxml')  # Use lxml parser
+
+        # 1. Remove <script>, <style>, <meta>, <link> tags
+        for tag in soup.find_all(['script', 'style', 'meta', 'link']):
+            # Keep CSS links if needed, but for overrides, we're removing all
+            tag.decompose()  # Removes the tag and its content
+
+        # 2. Remove comments
+        for comment in soup.find_all(string=lambda text: isinstance(text, Comment)):
+            comment.extract()
+
+        # 3. Clean SVG content (keep SVG tag but remove its children)
+        for svg in soup.find_all('svg'):
+            svg.clear()  # Removes children like <path>, <g>
+
+        # 4. Remove hidden elements
+        # 4.1 Elements with hidden attribute
+        for hidden_elem in soup.find_all(attrs={"hidden": True}):
+            hidden_elem.decompose()
+            
+        # 4.2 Known non-visible elements (spinners, tooltips, skeleton loaders)
+        non_visible_patterns = [
+            'spinner', 'tooltip', 'skeleton', 'loading', 'hidden', 
+            'invisible', 'offscreen', 'visually-hidden'
+        ]
+        for pattern in non_visible_patterns:
+            # Find elements with class or id containing these patterns
+            for elem in soup.find_all(class_=re.compile(pattern, re.IGNORECASE)):
+                elem.decompose()
+            for elem in soup.find_all(id=re.compile(pattern, re.IGNORECASE)):
+                elem.decompose()
+                
+        # 4.3 YouTube-specific non-visible elements
+        youtube_non_visible = [
+            'tp-yt-paper-spinner-lite', 'tp-yt-paper-tooltip', 
+            'ytd-popup-container', 'ytd-miniplayer'
+        ]
+        for elem_type in youtube_non_visible:
+            for elem in soup.find_all(elem_type):
+                elem.decompose()
+
+        # 5. Remove tracking/metadata attributes and accessibility attributes
+        attributes_to_remove = [
+            # Tracking/metadata attributes
+            'itemprop', 'itemscope', 'itemtype', 'trackingParams', 
+            'nonce', 'jslog', 'ved', 'ftl-eligible',
+            'notify-on-loaded', 'notify-on-unloaded',
+            # Accessibility attributes (careful with these)
+            'role', 'aria-label', 'aria-labelledby', 'aria-hidden',
+            'aria-expanded', 'aria-haspopup', 'aria-controls',
+            'aria-checked', 'aria-selected', 'aria-current',
+            'aria-disabled', 'aria-describedby'
+        ]
+        
+        # 6. Handle data-* attributes and sanitized attributes separately
+        for tag in soup.find_all(True):  # Find all tags
+            attrs_copy = dict(tag.attrs)  # Create a copy to avoid modification during iteration
+            for attr in attrs_copy:
+                # Remove data-* attributes
+                if attr.startswith('data-') or attr in attributes_to_remove:
+                    del tag[attr]
+                
+                # Replace sanitized href/src attributes with minimal placeholders
+                if attr in ['href', 'src'] and attrs_copy[attr] and ('[sanitized' in attrs_copy[attr] or 
+                                                                     'javascript:' in attrs_copy[attr]):
+                    tag[attr] = '#'  # Replace with minimal placeholder
+        
+        # 7. Attempt to remove redundant div wrappers (with caution)
+        # This is a simplified approach - only removes completely empty divs or divs with only whitespace
+        for div in soup.find_all('div'):
+            # Check if div has no attributes and only contains whitespace or nothing
+            if (not div.attrs and (not div.string or not div.string.strip()) and 
+                not div.find_all(True)):  # No child elements
+                div.decompose()
+        
+        # Return the cleaned HTML as a string
+        return str(soup)
+
+    except Exception as e:
+        print(f"Error cleaning HTML: {e}")
+        return html_content  # Return original on error
+
+def save_html_structure(html_structure, prompt):
+    """Save the HTML structure to a file in the requests folder."""
+    # Create requests directory if it doesn't exist
+    requests_dir = pathlib.Path("requests")
+    requests_dir.mkdir(exist_ok=True)
+    
+    # Create a filename with timestamp
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    # Create a safe filename from the prompt (first 30 chars, alphanumeric only)
+    safe_prompt = ''.join(c for c in prompt if c.isalnum() or c in ' _-')[:30].strip().replace(' ', '_')
+    filename = f"{timestamp}_{safe_prompt}.html"
+    
+    # Save the HTML structure to the file
+    file_path = requests_dir / filename
+    with open(file_path, 'w', encoding='utf-8') as f:
+        f.write(html_structure)
+    
+    print(f"Saved HTML structure to {file_path}")
+    return str(file_path)
+
+def save_css(css_content, prompt):
+    """Save the generated CSS to a file in the css folder."""
+    # Create css directory if it doesn't exist
+    css_dir = pathlib.Path("css")
+    css_dir.mkdir(exist_ok=True)
+    
+    # Create a filename with timestamp
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    # Create a safe filename from the prompt (first 30 chars, alphanumeric only)
+    safe_prompt = ''.join(c for c in prompt if c.isalnum() or c in ' _-')[:30].strip().replace(' ', '_')
+    filename = f"{timestamp}_{safe_prompt}.css"
+    
+    # Save the CSS to the file
+    file_path = css_dir / filename
+    with open(file_path, 'w', encoding='utf-8') as f:
+        f.write(css_content)
+    
+    print(f"Saved CSS to {file_path}")
+    return str(file_path)
+
 # Define the POST endpoint /restyle
 @app.post("/restyle")
 async def restyle_endpoint(request: RestyleRequest):
@@ -65,7 +200,22 @@ async def restyle_endpoint(request: RestyleRequest):
     if not client:
         raise HTTPException(status_code=500, detail="Anthropic client not initialized. Check API key and configuration.")
 
-    print(f"Received prompt: {request.prompt}") # Print the prompt upon receiving the request
+    print(f"Received prompt: {request.prompt}")  # Print the prompt upon receiving the request
+    
+    # Clean the HTML structure to reduce token count
+    cleaned_html = clean_html_for_llm(request.html_structure)
+    
+    # Save only the cleaned HTML
+    cleaned_html_path = save_html_structure(cleaned_html, request.prompt)
+    
+    # Calculate token reduction (approximate)
+    original_tokens = len(request.html_structure) / 4  # Rough estimate
+    cleaned_tokens = len(cleaned_html) / 4  # Rough estimate
+    token_reduction = original_tokens - cleaned_tokens
+    token_reduction_percent = (token_reduction / original_tokens) * 100 if original_tokens > 0 else 0
+    
+    print(f"HTML cleaning reduced tokens by approximately {token_reduction:.0f} tokens ({token_reduction_percent:.1f}%)")
+    
     # Updated system prompt to include HTML and CSS context
     system_prompt = f"""You are a world-class, highly creative web designer. Your task is to generate CSS code that overrides
     the styles of a webpage to satisfy a specific art direction, based *only* on the provided HTML structure.
@@ -74,7 +224,7 @@ async def restyle_endpoint(request: RestyleRequest):
     1.  **Art Direction:** {request.prompt}
     2.  **Current HTML Structure (simplified):**
         ```html
-        {request.html_structure}
+        {cleaned_html}
         ```
     
     Instructions:
@@ -99,10 +249,10 @@ async def restyle_endpoint(request: RestyleRequest):
     """
 
     try:
-        # Claude API call
+        # Claude API call with increased max_tokens to ensure complete CSS response
         response = client.messages.create(
             model="claude-3-7-sonnet-20250219",
-            max_tokens=1024,
+            max_tokens=4096,  # Increased from 1024 to 4096 to ensure complete CSS
             messages=[
                 {"role": "user", "content": system_prompt}
             ]
@@ -111,15 +261,20 @@ async def restyle_endpoint(request: RestyleRequest):
         # Extract the generated CSS from the response
         generated_style = response.content[0].text
 
-        print(f"Received prompt: {request.prompt}")
-        # Avoid printing potentially large HTML/CSS in logs by default
-        # print(f"HTML Structure: {request.html_structure[:200]}...") # Example: Log snippet
-        print(f"Generated CSS:\n{generated_style}")
+        # Save the CSS to a file
+        css_file_path = save_css(generated_style, request.prompt)
+
+        print(f"Generated CSS length: {len(generated_style)} characters")
+        # Print a preview of the CSS (first 500 characters)
+        print(f"CSS Preview:\n{generated_style[:500]}...")
 
         # Return the generated style along with the original request data for context
         return {
             "received_prompt": request.prompt,
-            "generated_style": generated_style
+            "generated_style": generated_style,
+            "html_saved_to": cleaned_html_path,
+            "css_saved_to": css_file_path,
+            "token_reduction": f"{token_reduction:.0f} tokens ({token_reduction_percent:.1f}%)"
         }
 
     except Exception as e:
